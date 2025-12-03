@@ -59,7 +59,7 @@ class Config {
 
   public integrations = {
     hubspot: {
-      apiKey: 'process.env.HUBSPOT_TOKEN',
+      apiKey: process.env.HUBSPOT_TOKEN,
       clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
       apiV3Url: 'https://api.hubapi.com/crm/v3',
       apiV1Oauth: 'https://api.hubapi.com/oauth/v1',
