@@ -1,0 +1,26 @@
+{
+  "queues": [
+    {
+      "name": "rut_unified",
+      "description": "Unificador de Contactos por RUT Chileno",
+      "identifiers": [
+        "objectId"
+      ]
+    },
+    {
+      "name": "deals",
+      "description": "Sincronización de Negocios",
+      "identifiers": [
+        "objectId"
+      ]
+    },
+    {
+      "name": "contacts",
+      "description": "Sincronización de Contactos",
+      "identifiers": [
+        "salesId",
+        "name"
+      ]
+    }
+  ]
+}
