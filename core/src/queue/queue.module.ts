@@ -4,6 +4,7 @@ import { CONFIG } from '../utils/config/enviroment.config';
 import { UtilsModule } from '../utils/utils.module';
 import { QueueService } from './queue.service';
 import { QueueProcessorService } from './queue.processor';
+import { HubspotModule } from '../hubspot/hubspot.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { QueueProcessorService } from './queue.processor';
       enableControllerDiscovery: true,
     }),
     UtilsModule,
+    HubspotModule,
   ],
   providers: [QueueService, QueueProcessorService],
 })

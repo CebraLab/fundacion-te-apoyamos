@@ -1,49 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AxiosInstance } from 'axios';
-import { INTEGRATION } from '../utils/config/integration.config';
-// import { QueueException } from '../utils/exceptions/queue.exception';
+import { HubspotService } from '../hubspot/hubspot.service';
 
 @Injectable()
 export class QueueService {
   private readonly logger = new Logger(QueueService.name);
-  readonly apiHbV3: AxiosInstance;
 
-  constructor() {
-    this.apiHbV3 = INTEGRATION.hubspot.apiV3;
-  }
+  constructor(private readonly hubspotService: HubspotService) {}
 
-  async getCompanies() {
-    const properties = 'name,phone,website';
-    const response = await this.apiHbV3.get(
-      `/objects/companies?properties=${properties}&limit=100`,
-    ); // &after=10
-    return response.data;
-  }
-
-  private delay = (ms: number): Promise<void> =>
-    new Promise((resolve) => setTimeout(resolve, ms));
-
+  /**
+   * Procesa un mensaje de contacto desde la cola RabbitMQ
+   * El mensaje contiene el objectId del contacto de HubSpot
+   */
   async processContact(message: any): Promise<void> {
     try {
       this.logger.log(
-        `[contact_queue]Starting to process message: ${message.id} - ${message.payload.objectId}`,
+        `[contact_queue] Starting to process message: ${message.id} - ${message.payload?.objectId || 'unknown'}`,
       );
 
-      await this.delay(Number(message.payload.objectId) * 2500);
-
-      // if (message.payload.objectId) {
-      //   throw Error('Object ID is required');
-      // }
-      // await this.getCompanies();
+      // Procesar el contacto usando HubspotService
+      await this.hubspotService.processContactFromQueue(message);
 
       this.logger.log(
-        `[contact_queue] Message processed successfully: ${message.id} - ${message.payload.objectId}`,
+        `[contact_queue] Message processed successfully: ${message.id} - ${message.payload?.objectId || 'unknown'}`,
       );
     } catch (error) {
       this.logger.error(
-        `[contact_queue] Error processing message: ${message.id} - ${message?.payload?.objectId}`,
+        `[contact_queue] Error processing message: ${message.id} - ${message?.payload?.objectId || 'unknown'}`,
+        error.stack,
       );
-      // throw QueueException.fromError(error, 'QUEUE_PROCESSOR_ERROR', 404);
       throw error;
     }
   }
