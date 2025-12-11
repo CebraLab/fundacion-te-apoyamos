@@ -8,6 +8,6 @@ import { UtilsModule } from '../utils/utils.module';
   imports: [UtilsModule],
   controllers: [HubspotController],
   providers: [HubspotService, ContactService],
-  exports: [HubspotService],
+  exports: [HubspotService, ContactService],
 })
 export class HubspotModule {}

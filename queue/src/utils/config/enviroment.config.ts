@@ -76,6 +76,15 @@ class Config {
       synchronize: true,
     },
   };
+
+  public integrations = {
+    hubspot: {
+      apiKey: process.env.HUBSPOT_TOKEN,
+      clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
+      webhookTestApiKey:
+        process.env.HUBSPOT_WEBHOOK_TEST_API_KEY || 'test-api-key',
+    },
+  };
 }
 
 export const CONFIG = new Config();

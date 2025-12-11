@@ -10,4 +10,13 @@ export class QueueProcessorService {
   async processContact(message: any) {
     await this.queueService.processContact(message);
   }
+
+  /**
+   * Procesa mensajes de la cola rut_unified_queue
+   * Unifica contactos duplicados basándose en el RUT
+   */
+  @SuscribeEventQueueMQ('rut_unified')
+  async processUnificarRut(message: any) {
+    await this.queueService.unificarRut(message);
+  }
 }

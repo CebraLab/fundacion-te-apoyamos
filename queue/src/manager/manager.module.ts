@@ -9,6 +9,7 @@ import { ClientConsumerService } from './client_consumer.service';
 import { QueueStatus } from './models/queue_logs.model';
 import { ClientController } from './client.controller';
 import { ClientService } from './client.service';
+import { HubspotValidatorService } from './hubspot-validator.service';
 import { AuthModule } from '../auth/auth.module';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ApiKey, User } from '../auth/models/user.model';
@@ -39,6 +40,7 @@ export const IMPORTS_MAIN_MODULE = [
     },
     ClientConsumerService,
     ClientService,
+    HubspotValidatorService,
   ],
 })
 export class ManagerModule implements OnModuleInit {
