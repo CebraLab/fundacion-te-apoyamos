@@ -59,7 +59,7 @@ export class HubspotService {
       const existingRutFormateado = contact.properties.rut_formateado;
       if (existingRutFormateado === rutFormateado) {
         this.logger.log(
-          `Contact ${contactId} already has correct rut_formateado: "${rutFormateado}"`,
+          `✅ Contact ${contactId} - RUT ya está formateado correctamente: "${rutFormateado}" (solo formateo, sin duplicados)`,
         );
         return;
       }
@@ -71,7 +71,7 @@ export class HubspotService {
       });
 
       this.logger.log(
-        `✅ Contact ${contactId} updated successfully from queue. RUT: "${rutOriginal}" -> rut_formateado: "${rutFormateado}"`,
+        `✅ Contact ${contactId} - RUT formateado actualizado: "${rutOriginal}" -> "${rutFormateado}"`,
       );
     } catch (error) {
       this.logger.error(

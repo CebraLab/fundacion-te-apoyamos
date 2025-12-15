@@ -51,67 +51,43 @@ export class ContactService {
 
   /**
    * Buscar contactos por RUT usando la API de búsqueda de HubSpot
-   * Busca por rut_formateado (RUT normalizado sin puntos ni guiones)
-   * Ordena por createdate ASCENDING para obtener el contacto más antiguo primero
+   * Busca por rut_formateado y ordena por createdate ASCENDING
    */
   async searchContactsByRut(
     rut: string,
     properties: string[] = ['rut', 'rut_formateado'],
   ) {
-    try {
-      const response = await this.apiHubspotV3.post(
-        `/objects/contacts/search`,
+    const response = await this.apiHubspotV3.post(`/objects/contacts/search`, {
+      properties,
+      sorts: [
         {
-          properties,
-          sorts: [
+          propertyName: 'createdate',
+          direction: 'ASCENDING',
+        },
+      ],
+      filterGroups: [
+        {
+          filters: [
             {
-              propertyName: 'createdate',
-              direction: 'ASCENDING',
-            },
-          ],
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: 'rut_formateado',
-                  value: rut,
-                  operator: 'EQ',
-                },
-              ],
+              propertyName: 'rut_formateado',
+              value: rut,
+              operator: 'EQ',
             },
           ],
         },
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Error searching contacts by RUT: ${error.message}`);
-      throw error;
-    }
+      ],
+    });
+    return response.data;
   }
 
   /**
    * Mergear contactos en HubSpot
-   * El contacto primaryContactId será el contacto principal (se mantiene)
-   * El contacto contactIdToMerge será mergeado y eliminado
    */
   async mergeContacts(primaryContactId: string, contactIdToMerge: string) {
-    try {
-      this.logger.log(
-        `Merging contact ${contactIdToMerge} into ${primaryContactId}`,
-      );
-      const response = await this.apiHubspotV3.post(`/objects/contacts/merge`, {
-        primaryObjectId: primaryContactId,
-        objectIdToMerge: contactIdToMerge,
-      });
-      this.logger.log(
-        `Successfully merged contact ${contactIdToMerge} into ${primaryContactId}`,
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error(
-        `Error merging contacts ${contactIdToMerge} into ${primaryContactId}: ${error.message}`,
-      );
-      throw error;
-    }
+    const response = await this.apiHubspotV3.post(`/objects/contacts/merge`, {
+      primaryObjectId: primaryContactId,
+      objectIdToMerge: contactIdToMerge,
+    });
+    return response.data;
   }
 }
