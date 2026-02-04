@@ -3,24 +3,27 @@
     {
       "name": "rut_unified",
       "description": "Unificador de Contactos por RUT Chileno",
-      "identifiers": [
-        "objectId"
-      ]
+      "identifiers": ["objectId"]
     },
     {
       "name": "deals",
       "description": "Sincronización de Negocios",
-      "identifiers": [
-        "objectId"
-      ]
+      "identifiers": ["objectId"]
     },
     {
       "name": "contacts",
       "description": "Sincronización de Contactos",
-      "identifiers": [
-        "salesId",
-        "name"
-      ]
+      "identifiers": ["salesId", "name"]
+    },
+    {
+      "name": "companies_rut_unified",
+      "description": "Unificador de Empresas por RUT Chileno",
+      "identifiers": ["objectId"]
+    },
+    {
+      "name": "companies",
+      "description": "Sincronización de Empresas",
+      "identifiers": ["portalId", "name"]
     }
   ]
 }

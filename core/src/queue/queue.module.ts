@@ -4,6 +4,8 @@ import { CONFIG } from '../utils/config/enviroment.config';
 import { UtilsModule } from '../utils/utils.module';
 import { QueueService } from './queue.service';
 import { QueueProcessorService } from './queue.processor';
+import { CompanyRutService } from './company-rut.service';
+import { CompanyProcessorService } from './company.processor';
 import { HubspotModule } from '../hubspot/hubspot.module';
 
 @Module({
@@ -18,6 +20,11 @@ import { HubspotModule } from '../hubspot/hubspot.module';
     UtilsModule,
     HubspotModule,
   ],
-  providers: [QueueService, QueueProcessorService],
+  providers: [
+    QueueService,
+    QueueProcessorService,
+    CompanyRutService,
+    CompanyProcessorService,
+  ],
 })
 export class QueueModule {}

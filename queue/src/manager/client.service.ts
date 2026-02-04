@@ -15,6 +15,20 @@ export class ClientService {
       queueName: queue.name,
     }));
 
+    // Agregar rutas especiales para unificadores
+    const unificadores = [
+      {
+        title: '🔗 Unificador de Contactos',
+        to: 'unificadorContactos',
+        queueName: '',
+      },
+      {
+        title: '🔗 Unificador de Empresas',
+        to: 'unificadorEmpresas',
+        queueName: '',
+      },
+    ];
+
     const aditionalRouters: any[] = [];
 
     if (user_type && user_type === UserType.ADMIN) {
@@ -25,7 +39,10 @@ export class ClientService {
       });
     }
 
-    return { routerQueues, aditionalRouters };
+    return {
+      routerQueues: [...routerQueues, ...unificadores],
+      aditionalRouters,
+    };
   }
 
   async getQueueListPaginated(

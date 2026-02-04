@@ -41,7 +41,7 @@ export class QueueService {
       `Contacto ${contactId} - RUT: "${rutOriginal}" (normalizado: "${rutNormalizado}")`,
     );
 
-    // Asegurarse de que el contacto tenga rut_formateado guardado
+    // Asegurarse de que el contacto actual tenga rut_formateado guardado
     const contactWithFormatted = await this.contactService.getById(contactId, [
       'rut',
       'rut_formateado',
@@ -53,12 +53,16 @@ export class QueueService {
       await this.contactService.update(contactId, {
         rut_formateado: rutNormalizado,
       });
+      this.logger.log(
+        `   Actualizado rut_formateado para contacto ${contactId}: "${rutOriginal}" -> "${rutNormalizado}"`,
+      );
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     // Buscar contactos con el mismo RUT (con reintentos para indexación)
+    // Busca tanto por rut_formateado como por rut original
     let contacts = { results: [] as any[] };
-    let retries = 5;
+    let retries = 10;
 
     while (retries > 0) {
       const searchResult = await this.contactService.searchContactsByRut(
@@ -67,20 +71,33 @@ export class QueueService {
       );
 
       const foundContacts = searchResult?.results || [];
-      const otherContacts = foundContacts.filter((c) => c.id !== contactId);
 
-      if (otherContacts.length > 0) {
-        contacts = searchResult;
+      // Filtrar por RUT normalizado (puede haber falsos positivos con CONTAINS)
+      const contactsWithSameRut = foundContacts.filter((c) => {
+        const contactRut = c.properties?.rut;
+        if (!contactRut) return false;
+        return RutFormatter.formatRut(contactRut) === rutNormalizado;
+      });
+
+      // Si encuentra más de 1 contacto, hay duplicados
+      if (contactsWithSameRut.length > 1) {
+        contacts.results = contactsWithSameRut;
+        this.logger.log(
+          `✅ Búsqueda exitosa en intento ${11 - retries}: encontrados ${contactsWithSameRut.length} contacto(s) con RUT "${rutNormalizado}"`,
+        );
         break;
       }
 
       if (retries > 1) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        this.logger.debug(
+          `⏳ Reintentando búsqueda de contactos con RUT "${rutNormalizado}" (encontrados: ${contactsWithSameRut.length}, intentos restantes: ${retries - 1})...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 8000));
       }
       retries--;
     }
 
-    // Eliminar duplicados
+    // Eliminar duplicados por ID
     const uniqueContacts = (contacts.results || []).filter(
       (contact, index, self) =>
         index === self.findIndex((c) => c.id === contact.id),

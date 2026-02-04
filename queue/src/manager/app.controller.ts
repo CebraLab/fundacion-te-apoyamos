@@ -175,12 +175,16 @@ Content-Type: application/json
   @ApiOperation({
     summary: 'Receive HubSpot webhooks and enqueue to multiple queues',
     description: `
-Endpoint específico para recibir webhooks desde HubSpot y encolarlos automáticamente a múltiples colas.
+Endpoint para recibir webhooks desde HubSpot y encolarlos automáticamente a múltiples colas según el tipo de evento.
 
 **Características:**
-- Encola automáticamente los eventos recibidos a DOS colas:
+- Ruteo automático por subscriptionType (contact.* → colas de contactos, company.* → colas de empresas)
+- Encola eventos de contactos a:
   1. contacts_queue: Para formatear el RUT del contacto
   2. rut_unified_queue: Para unificar contactos duplicados por RUT
+- Encola eventos de empresas a:
+  1. companies_queue: Para formatear el RUT de la empresa
+  2. companies_rut_unified_queue: Para unificar empresas duplicadas por RUT
 - Validación automática de firma de HubSpot (v3)
 - Validación de payload (debe ser array)
 - Manejo de errores específico para webhooks
@@ -195,16 +199,23 @@ Este endpoint acepta DOS formas de autenticación:
    - Header: \`X-API-Key: tu-api-key\`
    - Útil para testing local
 
-**Flujo:**
-1. HubSpot envía evento → Validación → Encola a AMBAS colas → Respuesta 200
-2. Core workers procesan desde ambas colas:
-   - contacts_queue: Formatea RUT y actualiza rut_formateado
-   - rut_unified_queue: Busca duplicados por RUT y los mergea
+**Flujo para Contactos:**
+HubSpot envía evento (contact.propertyChange) → Validación → Encola a contacts_queue + rut_unified_queue → Respuesta 200
+Core workers procesan desde ambas colas:
+- contacts_queue: Formatea RUT y actualiza rut_formateado
+- rut_unified_queue: Busca duplicados por RUT y los mergea
 
-**Ejemplo de Payload HubSpot:**
+**Flujo para Empresas:**
+HubSpot envía evento (company.propertyChange) → Validación → Encola a companies_queue + companies_rut_unified_queue → Respuesta 200
+Core workers procesan desde ambas colas:
+- companies_queue: Formatea RUT y actualiza rut_formateado
+- companies_rut_unified_queue: Busca duplicados por RUT y los mergea
+
+**Ejemplo de Payload HubSpot (Contacto):**
 \`\`\`json
 [
   {
+    "subscriptionType": "contact.propertyChange",
     "objectId": 123456,
     "propertyName": "rut",
     "propertyValue": "12.345.678-9",
@@ -216,12 +227,29 @@ Este endpoint acepta DOS formas de autenticación:
   }
 ]
 \`\`\`
+
+**Ejemplo de Payload HubSpot (Empresa):**
+\`\`\`json
+[
+  {
+    "subscriptionType": "company.propertyChange",
+    "objectId": 654321,
+    "propertyName": "rut",
+    "propertyValue": "12.345.678-9",
+    "changeSource": "CRM",
+    "eventId": 790,
+    "subscriptionId": 5388850,
+    "portalId": 7114540,
+    "occurredAt": 1659457602421
+  }
+]
+\`\`\`
     `,
   })
   @ApiParam({
     name: 'queueName',
     description:
-      'Base queue name (will be ignored, always sends to contacts and rut_unified)',
+      'Base queue name (ignored, routing is based on subscriptionType in payload)',
     example: 'contacts',
   })
   @ApiBody({
@@ -231,6 +259,11 @@ Este endpoint acepta DOS formas de autenticación:
       items: {
         type: 'object',
         properties: {
+          subscriptionType: {
+            type: 'string',
+            example: 'contact.propertyChange',
+            description: 'contact.* for contacts, company.* for companies',
+          },
           objectId: { type: 'number', example: 123456 },
           propertyName: { type: 'string', example: 'rut' },
           propertyValue: { type: 'string', example: '12.345.678-9' },
@@ -245,7 +278,7 @@ Este endpoint acepta DOS formas de autenticación:
   })
   @ApiResponse({
     status: 200,
-    description: 'Webhook received and enqueued to both queues successfully',
+    description: 'Webhook received and enqueued successfully',
     schema: {
       type: 'object',
       properties: {
@@ -258,7 +291,14 @@ Este endpoint acepta DOS formas de autenticación:
         },
         message: {
           type: 'string',
-          example: 'HubSpot webhook enqueued to both queues successfully',
+          example: 'HubSpot webhook enqueued successfully',
+        },
+        details: {
+          type: 'object',
+          properties: {
+            isContact: { type: 'boolean' },
+            isCompany: { type: 'boolean' },
+          },
         },
       },
     },
@@ -284,22 +324,45 @@ Este endpoint acepta DOS formas de autenticación:
         );
       }
 
-      // Enviar a DOS colas en paralelo
-      const results = await Promise.all([
-        // Cola para formatear RUT
-        this.queueService.sendToQueue('contacts_queue', body, 2),
-        // Cola para unificar contactos duplicados por RUT
-        this.queueService.sendToQueue('rut_unified_queue', body, 2),
-      ]);
+      // Determinar si es contacto o empresa basado en subscriptionType
+      const isCompany = body.some((event) =>
+        event.subscriptionType?.startsWith('company.'),
+      );
+      const isContact = body.some((event) =>
+        event.subscriptionType?.startsWith('contact.'),
+      );
+
+      const queues: string[] = [];
+      const results: any[] = [];
+
+      // Enviar a colas de contactos si es necesario
+      if (isContact) {
+        queues.push('contacts_queue', 'rut_unified_queue');
+        const contactsResults = await Promise.all([
+          this.queueService.sendToQueue('contacts_queue', body, 2),
+          this.queueService.sendToQueue('rut_unified_queue', body, 2),
+        ]);
+        results.push(...contactsResults);
+      }
+
+      // Enviar a colas de empresas si es necesario
+      if (isCompany) {
+        queues.push('companies_queue', 'companies_rut_unified_queue');
+        const companiesResults = await Promise.all([
+          this.queueService.sendToQueue('companies_queue', body, 2),
+          this.queueService.sendToQueue('companies_rut_unified_queue', body, 2),
+        ]);
+        results.push(...companiesResults);
+      }
 
       return {
         received: true,
         eventsCount: body.length,
-        queues: ['contacts_queue', 'rut_unified_queue'],
-        message: 'HubSpot webhook enqueued to both queues successfully',
+        queues,
+        message: 'HubSpot webhook enqueued successfully',
         details: {
-          contacts_queue: results[0],
-          rut_unified_queue: results[1],
+          isContact,
+          isCompany,
         },
       };
     } catch (error) {

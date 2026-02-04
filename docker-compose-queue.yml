@@ -9,7 +9,7 @@ services:
     environment:
       PROJECT_NAME: ${PROJECT_NAME}
       PORT: 3000
-      NODE_ENV: production
+      NODE_ENV: development
       RABBITMQ_HOST: ${RABBITMQ_HOST}
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_USER: ${RABBITMQ_USER}
@@ -20,6 +20,8 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
+      HUBSPOT_TOKEN: ${HUBSPOT_TOKEN}
+      HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET}
     expose:
       - 3000
     ports:
@@ -59,7 +61,7 @@ services:
     image: mysql:5.7
     container_name: ${PROJECT_NAME}_mysql # nombre de referencia del servicio
     command: --default-authentication-plugin=mysql_native_password
-    ports: 
+    ports:
       - 33062:3306
     volumes:
       - ./.volumes/mysql:/var/lib/mysql # carpeta local:carpeta de config de mysql
@@ -67,12 +69,22 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_ROOT_HOST: '%'
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_HOST: "%"
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD}"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -86,13 +98,13 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     ports:
-        - 5672:5672
-        - 15672:15672
+      - 5672:5672
+      - 15672:15672
     volumes:
-        - ./.volumes/rabbitmq/data/:/var/lib/rabbitmq/
-        - ./.volumes/rabbitmq/log/:/var/log/rabbitmq
+      - ./.volumes/rabbitmq/data/:/var/lib/rabbitmq/
+      - ./.volumes/rabbitmq/log/:/var/log/rabbitmq
     networks:
-        - app_network
+      - app_network
     healthcheck:
       test: rabbitmq-diagnostics ping
       interval: 60s

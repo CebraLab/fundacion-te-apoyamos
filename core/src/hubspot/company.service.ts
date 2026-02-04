@@ -3,8 +3,8 @@ import { AxiosInstance } from 'axios';
 import { INTEGRATION } from '../utils/config/integration.config';
 
 @Injectable()
-export class ContactService {
-  private readonly logger = new Logger(ContactService.name);
+export class CompanyService {
+  private readonly logger = new Logger(CompanyService.name);
 
   readonly apiHubspotV3: AxiosInstance;
 
@@ -13,54 +13,51 @@ export class ContactService {
   }
 
   /**
-   * Buscar contacto por ID de HubSpot
+   * Buscar empresa por ID de HubSpot
    */
-  async getById(contactId: string, properties?: string[]) {
+  async getById(companyId: string, properties?: string[]) {
     try {
-      // Si se especifican propiedades, incluirlas en la query
       const propertiesParam = properties
         ? `?properties=${properties.join(',')}`
         : '';
       const response = await this.apiHubspotV3.get(
-        `/objects/contacts/${contactId}${propertiesParam}`,
+        `/objects/companies/${companyId}${propertiesParam}`,
       );
       return response.data;
     } catch (error) {
-      this.logger.error(`Error getting contact by ID: ${error.message}`);
+      this.logger.error(`Error getting company by ID: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Actualizar propiedades de un contacto
+   * Actualizar propiedades de una empresa
    */
-  async update(contactId: string, properties: any) {
+  async update(companyId: string, properties: any) {
     try {
       const response = await this.apiHubspotV3.patch(
-        `/objects/contacts/${contactId}`,
+        `/objects/companies/${companyId}`,
         {
           properties,
         },
       );
       return response.data;
     } catch (error) {
-      this.logger.error(`Error updating contact: ${error.message}`);
+      this.logger.error(`Error updating company: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Buscar contactos por RUT usando la API de búsqueda de HubSpot
-   * Busca por rut_formateado Y por rut original (para contactos que aún no tienen rut_formateado)
+   * Buscar empresas por RUT usando la API de búsqueda de HubSpot
+   * Busca por rut_formateado Y por rut original (para empresas que aún no tienen rut_formateado)
    * Ordena por createdate ASCENDING
    */
-  async searchContactsByRut(
+  async searchCompaniesByRut(
     rut: string,
     properties: string[] = ['rut', 'rut_formateado'],
   ) {
-    // Buscar tanto por rut_formateado (normalizado) como por rut original
-    // Esto captura contactos creados previamente que no tienen rut_formateado actualizado
-    const response = await this.apiHubspotV3.post(`/objects/contacts/search`, {
+    const response = await this.apiHubspotV3.post(`/objects/companies/search`, {
       properties,
       sorts: [
         {
@@ -93,12 +90,12 @@ export class ContactService {
   }
 
   /**
-   * Mergear contactos en HubSpot
+   * Mergear empresas en HubSpot
    */
-  async mergeContacts(primaryContactId: string, contactIdToMerge: string) {
-    const response = await this.apiHubspotV3.post(`/objects/contacts/merge`, {
-      primaryObjectId: primaryContactId,
-      objectIdToMerge: contactIdToMerge,
+  async mergeCompanies(primaryCompanyId: string, companyIdToMerge: string) {
+    const response = await this.apiHubspotV3.post(`/objects/companies/merge`, {
+      primaryObjectId: primaryCompanyId,
+      objectIdToMerge: companyIdToMerge,
     });
     return response.data;
   }
