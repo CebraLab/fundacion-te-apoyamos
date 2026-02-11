@@ -88,7 +88,7 @@ export class HubspotService {
 
   /**
    * Procesa una empresa desde la cola RabbitMQ
-   * Lee la propiedad 'RUT' de la empresa y actualiza 'rut_formateado'
+   * Lee la propiedad 'rut_entidad' de la empresa y actualiza 'rut_entidad_formateado'
    * Este método se llama cuando se consume un mensaje de la cola
    */
   async processCompanyFromQueue(message: any): Promise<void> {
@@ -104,18 +104,18 @@ export class HubspotService {
 
       // Obtener la empresa completa desde HubSpot
       const company = await this.companyService.getById(companyId, [
-        'rut',
-        'rut_formateado',
+        'rut_entidad',
+        'rut_entidad_formateado',
       ]);
       if (!company || !company.properties) {
         throw new Error(`Company ${companyId} not found in HubSpot`);
       }
 
-      // Extraer el RUT de la propiedad 'rut' de la empresa
-      const rutOriginal = company.properties.rut;
+      // Extraer el RUT de la propiedad 'rut_entidad' de la empresa
+      const rutOriginal = company.properties.rut_entidad;
       if (!rutOriginal) {
         this.logger.warn(
-          `No RUT property found in company ${companyId}, skipping rut_formateado update`,
+          `No RUT property found in company ${companyId}, skipping rut_entidad_formateado update`,
         );
         return;
       }
@@ -132,8 +132,8 @@ export class HubspotService {
         );
       }
 
-      // Verificar si el rut_formateado ya existe y es el mismo
-      const existingRutFormateado = company.properties.rut_formateado;
+      // Verificar si el rut_entidad_formateado ya existe y es el mismo
+      const existingRutFormateado = company.properties.rut_entidad_formateado;
       if (existingRutFormateado === rutFormateado) {
         this.logger.log(
           `✅ Company ${companyId} - RUT ya está formateado correctamente: "${rutFormateado}" (solo formateo, sin duplicados)`,
@@ -141,10 +141,10 @@ export class HubspotService {
         return;
       }
 
-      // Actualizar la empresa con el RUT formateado en la propiedad 'rut_formateado'
+      // Actualizar la empresa con el RUT formateado en la propiedad 'rut_entidad_formateado'
       // SIEMPRE guardar el RUT formateado, incluso si no es válido
       await this.companyService.update(companyId, {
-        rut_formateado: rutFormateado,
+        rut_entidad_formateado: rutFormateado,
       });
 
       this.logger.log(

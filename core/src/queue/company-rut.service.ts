@@ -18,53 +18,60 @@ export class CompanyRutService {
       return;
     }
 
-    const company = await this.companyService.getById(companyId, ['rut']);
-    if (!company?.properties?.rut) {
+    const company = await this.companyService.getById(companyId, [
+      'rut_entidad',
+    ]);
+    if (!company?.properties?.rut_entidad) {
       return;
     }
 
-    const rutOriginal = company.properties.rut;
+    const rutOriginal = company.properties.rut_entidad;
     const rutNormalizado = RutFormatter.formatRut(rutOriginal);
 
     this.logger.log(
       `Empresa ${companyId} - RUT: "${rutOriginal}" (normalizado: "${rutNormalizado}")`,
     );
 
-    // Asegurarse de que la empresa actual tenga rut_formateado guardado
+    // Asegurarse de que la empresa actual tenga rut_entidad_formateado guardado
     const companyWithFormatted = await this.companyService.getById(companyId, [
-      'rut',
-      'rut_formateado',
+      'rut_entidad',
+      'rut_entidad_formateado',
     ]);
     if (
-      !companyWithFormatted?.properties?.rut_formateado ||
-      companyWithFormatted.properties.rut_formateado !== rutNormalizado
+      !companyWithFormatted?.properties?.rut_entidad_formateado ||
+      companyWithFormatted.properties.rut_entidad_formateado !== rutNormalizado
     ) {
       await this.companyService.update(companyId, {
-        rut_formateado: rutNormalizado,
+        rut_entidad_formateado: rutNormalizado,
       });
       this.logger.log(
-        `   Actualizado rut_formateado para empresa ${companyId}: "${rutOriginal}" -> "${rutNormalizado}"`,
+        `   Actualizado rut_entidad_formateado para empresa ${companyId}: "${rutOriginal}" -> "${rutNormalizado}"`,
       );
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     // Buscar empresas con el mismo RUT (con reintentos para indexación)
-    // HubSpot necesita tiempo para indexar el cambio de rut_formateado
-    // Busca tanto por rut_formateado como por rut original
+    // HubSpot necesita tiempo para indexar el cambio de rut_entidad_formateado
+    // Busca tanto por rut_entidad_formateado como por rut_entidad
     let companies = { results: [] as any[] };
     let retries = 10;
 
     while (retries > 0) {
-      const searchResult = await this.companyService.searchCompaniesByRut(
+      const searchResult = await this.companyService.searchCompaniesByRutAll(
         rutNormalizado,
-        ['rut', 'rut_formateado', 'createdate'],
+        ['rut_entidad', 'rut_entidad_formateado', 'createdate'],
       );
 
       const foundCompanies = searchResult?.results || [];
+      if (searchResult?.capped) {
+        this.logger.warn(
+          `⚠️ Búsqueda paginada alcanzó el límite de páginas para RUT "${rutNormalizado}". Resultados parciales: ${foundCompanies.length}`,
+        );
+      }
 
       // Filtrar por RUT normalizado (puede haber falsos positivos con CONTAINS)
       const companiesWithSameRut = foundCompanies.filter((c) => {
-        const companyRut = c.properties?.rut;
+        const companyRut = c.properties?.rut_entidad;
         if (!companyRut) return false;
         return RutFormatter.formatRut(companyRut) === rutNormalizado;
       });
@@ -108,12 +115,13 @@ export class CompanyRutService {
 
     // Tomar el primero como primary (ya está ordenado por createdate ASC) y mergear el resto
     const [primaryCompany, ...companiesToMerge] = uniqueCompanies;
+    let primaryCompanyId = primaryCompany.id;
 
     this.logger.log(
       `🔗 Empresa ${companyId} tiene el mismo RUT "${rutNormalizado}" que ${uniqueCompanies.length - 1} otra(s) empresa(s). Se procede a unificar.`,
     );
     this.logger.log(
-      `   Empresa principal (más antigua): ${primaryCompany.id}. Empresas a unificar: ${companiesToMerge.map((c) => c.id).join(', ')}`,
+      `   Empresa principal (más antigua): ${primaryCompanyId}. Empresas a unificar: ${companiesToMerge.map((c) => c.id).join(', ')}`,
     );
 
     let successCount = 0;
@@ -122,29 +130,61 @@ export class CompanyRutService {
     for (const companyToMerge of companiesToMerge) {
       try {
         await this.companyService.mergeCompanies(
-          primaryCompany.id,
+          primaryCompanyId,
           companyToMerge.id,
         );
         successCount++;
         this.logger.log(
-          `   ✅ Empresa ${companyToMerge.id} unificada exitosamente en ${primaryCompany.id}`,
+          `   ✅ Empresa ${companyToMerge.id} unificada exitosamente en ${primaryCompanyId}`,
         );
       } catch (error: any) {
+        const errorMessage = error.response?.data?.message || error.message;
+        const forwardRefMatch = /forward reference to (\d+)/i.exec(errorMessage);
+
+        if (forwardRefMatch?.[1]) {
+          const canonicalId = forwardRefMatch[1];
+          if (canonicalId !== primaryCompanyId) {
+            this.logger.warn(
+              `   ⚠️ Empresa principal ${primaryCompanyId} no es canonical. Reintentando con canonical ${canonicalId}...`,
+            );
+            primaryCompanyId = canonicalId;
+            try {
+              await this.companyService.mergeCompanies(
+                primaryCompanyId,
+                companyToMerge.id,
+              );
+              successCount++;
+              this.logger.log(
+                `   ✅ Empresa ${companyToMerge.id} unificada exitosamente en ${primaryCompanyId}`,
+              );
+              continue;
+            } catch (retryError: any) {
+              failCount++;
+              const retryMessage =
+                retryError.response?.data?.message || retryError.message;
+              this.logger.warn(
+                `   ⚠️ Empresa ${companyToMerge.id} no pudo ser unificada tras reintento: ${retryMessage}`,
+              );
+              continue;
+            }
+          }
+        }
+
         failCount++;
         if (error.response?.status === 400) {
           this.logger.warn(
-            `   ⚠️ Empresa ${companyToMerge.id} no pudo ser unificada: ${error.response?.data?.message || error.message}`,
+            `   ⚠️ Empresa ${companyToMerge.id} no pudo ser unificada: ${errorMessage}`,
           );
         } else {
           this.logger.error(
-            `   ❌ Error al unificar empresa ${companyToMerge.id}: ${error.message}`,
+            `   ❌ Error al unificar empresa ${companyToMerge.id}: ${errorMessage}`,
           );
         }
       }
     }
 
     this.logger.log(
-      `✅ Unificación completada para RUT "${rutNormalizado}". Empresa principal: ${primaryCompany.id}. Exitosas: ${successCount}, Fallidas: ${failCount}`,
+      `✅ Unificación completada para RUT "${rutNormalizado}". Empresa principal: ${primaryCompanyId}. Exitosas: ${successCount}, Fallidas: ${failCount}`,
     );
   }
 }

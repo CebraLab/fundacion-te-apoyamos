@@ -208,7 +208,7 @@ Core workers procesan desde ambas colas:
 **Flujo para Empresas:**
 HubSpot envía evento (company.propertyChange) → Validación → Encola a companies_queue + companies_rut_unified_queue → Respuesta 200
 Core workers procesan desde ambas colas:
-- companies_queue: Formatea RUT y actualiza rut_formateado
+- companies_queue: Formatea RUT y actualiza rut_entidad_formateado
 - companies_rut_unified_queue: Busca duplicados por RUT y los mergea
 
 **Ejemplo de Payload HubSpot (Contacto):**

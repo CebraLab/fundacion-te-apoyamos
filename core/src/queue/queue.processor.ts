@@ -26,7 +26,7 @@ export class QueueProcessorService {
 
   /**
    * Procesa mensajes de la cola companies_queue
-   * Formatea el RUT de la empresa y lo guarda en rut_formateado
+   * Formatea el RUT de la empresa y lo guarda en rut_entidad_formateado
    */
   @SuscribeEventQueueMQ('companies')
   async processCompany(message: any) {

@@ -112,12 +112,13 @@ export class QueueService {
 
     // Tomar el primero como primary (ya está ordenado por createdate ASC) y mergear el resto
     const [primaryContact, ...contactsToMerge] = uniqueContacts;
+    let primaryContactId = primaryContact.id;
 
     this.logger.log(
       `🔗 Contacto ${contactId} tiene el mismo RUT "${rutNormalizado}" que ${uniqueContacts.length - 1} otro(s) contacto(s). Se procede a unificar.`,
     );
     this.logger.log(
-      `   Contacto principal (más antiguo): ${primaryContact.id}. Contactos a unificar: ${contactsToMerge.map((c) => c.id).join(', ')}`,
+      `   Contacto principal (más antiguo): ${primaryContactId}. Contactos a unificar: ${contactsToMerge.map((c) => c.id).join(', ')}`,
     );
 
     let successCount = 0;
@@ -126,30 +127,62 @@ export class QueueService {
     for (const contactToMerge of contactsToMerge) {
       try {
         await this.contactService.mergeContacts(
-          primaryContact.id,
+          primaryContactId,
           contactToMerge.id,
         );
         successCount++;
         this.logger.log(
-          `   ✅ Contacto ${contactToMerge.id} unificado exitosamente en ${primaryContact.id}`,
+          `   ✅ Contacto ${contactToMerge.id} unificado exitosamente en ${primaryContactId}`,
         );
       } catch (error: any) {
+        const errorMessage = error.response?.data?.message || error.message;
+        const forwardRefMatch = /forward reference to (\d+)/i.exec(errorMessage);
+
+        if (forwardRefMatch?.[1]) {
+          const canonicalId = forwardRefMatch[1];
+          if (canonicalId !== primaryContactId) {
+            this.logger.warn(
+              `   ⚠️ Contacto principal ${primaryContactId} no es canonical. Reintentando con canonical ${canonicalId}...`,
+            );
+            primaryContactId = canonicalId;
+            try {
+              await this.contactService.mergeContacts(
+                primaryContactId,
+                contactToMerge.id,
+              );
+              successCount++;
+              this.logger.log(
+                `   ✅ Contacto ${contactToMerge.id} unificado exitosamente en ${primaryContactId}`,
+              );
+              continue;
+            } catch (retryError: any) {
+              failCount++;
+              const retryMessage =
+                retryError.response?.data?.message || retryError.message;
+              this.logger.warn(
+                `   ⚠️ Contacto ${contactToMerge.id} no pudo ser unificado tras reintento: ${retryMessage}`,
+              );
+              continue;
+            }
+          }
+        }
+
         failCount++;
         // Continuar con el siguiente contacto aunque falle uno
         if (error.response?.status === 400) {
           this.logger.warn(
-            `   ⚠️ Contacto ${contactToMerge.id} no pudo ser unificado: ${error.response?.data?.message || error.message}`,
+            `   ⚠️ Contacto ${contactToMerge.id} no pudo ser unificado: ${errorMessage}`,
           );
         } else {
           this.logger.error(
-            `   ❌ Error al unificar contacto ${contactToMerge.id}: ${error.message}`,
+            `   ❌ Error al unificar contacto ${contactToMerge.id}: ${errorMessage}`,
           );
         }
       }
     }
 
     this.logger.log(
-      `✅ Unificación completada para RUT "${rutNormalizado}". Contacto principal: ${primaryContact.id}. Exitosos: ${successCount}, Fallidos: ${failCount}`,
+      `✅ Unificación completada para RUT "${rutNormalizado}". Contacto principal: ${primaryContactId}. Exitosos: ${successCount}, Fallidos: ${failCount}`,
     );
   }
 }
