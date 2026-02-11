@@ -136,7 +136,9 @@ export class QueueService {
         );
       } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
-        const forwardRefMatch = /forward reference to (\d+)/i.exec(errorMessage);
+        const forwardRefMatch = /forward reference to (\d+)/i.exec(
+          errorMessage,
+        );
 
         if (forwardRefMatch?.[1]) {
           const canonicalId = forwardRefMatch[1];
