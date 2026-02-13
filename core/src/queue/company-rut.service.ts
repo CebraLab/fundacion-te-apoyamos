@@ -6,6 +6,29 @@ import { RutFormatter } from '../hubspot/utils/rut-formatter.util';
 export class CompanyRutService {
   private readonly logger = new Logger(CompanyRutService.name);
 
+  private isRetryableMergeError(
+    errorMessage: string,
+    status?: number,
+    errorCode?: string,
+  ): boolean {
+    const nonRetryablePatterns = [
+      /association configuration limits are exceeded/i,
+      /more than \d+ objects merged into it/i,
+    ];
+
+    if (nonRetryablePatterns.some((pattern) => pattern.test(errorMessage))) {
+      return false;
+    }
+
+    if (status === 429 || (status && status >= 500)) {
+      return true;
+    }
+
+    return ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(
+      errorCode || '',
+    );
+  }
+
   constructor(private readonly companyService: CompanyService) {}
 
   /**
@@ -54,7 +77,7 @@ export class CompanyRutService {
     // HubSpot necesita tiempo para indexar el cambio de rut_entidad_formateado
     // Busca tanto por rut_entidad_formateado como por rut_entidad
     let companies = { results: [] as any[] };
-    let retries = 10;
+    let retries = 2;
 
     while (retries > 0) {
       const searchResult = await this.companyService.searchCompaniesByRutAll(
@@ -80,7 +103,7 @@ export class CompanyRutService {
       if (companiesWithSameRut.length > 1) {
         companies.results = companiesWithSameRut;
         this.logger.log(
-          `✅ Búsqueda exitosa en intento ${11 - retries}: encontradas ${companiesWithSameRut.length} empresa(s) con RUT "${rutNormalizado}"`,
+          `✅ Búsqueda exitosa en intento ${3 - retries}: encontradas ${companiesWithSameRut.length} empresa(s) con RUT "${rutNormalizado}"`,
         );
         break;
       }
@@ -96,7 +119,7 @@ export class CompanyRutService {
 
     if (retries === 0) {
       this.logger.log(
-        `⚠️ No se encontraron duplicados después de 10 intentos para RUT "${rutNormalizado}"`,
+        `⚠️ No se encontraron duplicados después de 3 intentos para RUT "${rutNormalizado}"`,
       );
     }
 
@@ -126,6 +149,8 @@ export class CompanyRutService {
 
     let successCount = 0;
     let failCount = 0;
+    let retryableFailCount = 0;
+    let lastRetryableError = '';
 
     for (const companyToMerge of companiesToMerge) {
       try {
@@ -139,7 +164,11 @@ export class CompanyRutService {
         );
       } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
-        const forwardRefMatch = /forward reference to (\d+)/i.exec(errorMessage);
+        const status = error.response?.status;
+        const errorCode = error.code as string | undefined;
+        const forwardRefMatch = /forward reference to (\d+)/i.exec(
+          errorMessage,
+        );
 
         if (forwardRefMatch?.[1]) {
           const canonicalId = forwardRefMatch[1];
@@ -162,6 +191,16 @@ export class CompanyRutService {
               failCount++;
               const retryMessage =
                 retryError.response?.data?.message || retryError.message;
+              if (
+                this.isRetryableMergeError(
+                  retryMessage,
+                  retryError.response?.status,
+                  retryError.code,
+                )
+              ) {
+                retryableFailCount++;
+                lastRetryableError = retryMessage;
+              }
               this.logger.warn(
                 `   ⚠️ Empresa ${companyToMerge.id} no pudo ser unificada tras reintento: ${retryMessage}`,
               );
@@ -171,7 +210,11 @@ export class CompanyRutService {
         }
 
         failCount++;
-        if (error.response?.status === 400) {
+        if (this.isRetryableMergeError(errorMessage, status, errorCode)) {
+          retryableFailCount++;
+          lastRetryableError = errorMessage;
+        }
+        if (status === 400) {
           this.logger.warn(
             `   ⚠️ Empresa ${companyToMerge.id} no pudo ser unificada: ${errorMessage}`,
           );
@@ -186,5 +229,11 @@ export class CompanyRutService {
     this.logger.log(
       `✅ Unificación completada para RUT "${rutNormalizado}". Empresa principal: ${primaryCompanyId}. Exitosas: ${successCount}, Fallidas: ${failCount}`,
     );
+
+    if (retryableFailCount > 0) {
+      throw new Error(
+        `Retryable merge errors for company ${companyId}: ${lastRetryableError}`,
+      );
+    }
   }
 }

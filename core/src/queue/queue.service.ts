@@ -7,6 +7,29 @@ import { RutFormatter } from '../hubspot/utils/rut-formatter.util';
 export class QueueService {
   private readonly logger = new Logger(QueueService.name);
 
+  private isRetryableMergeError(
+    errorMessage: string,
+    status?: number,
+    errorCode?: string,
+  ): boolean {
+    const nonRetryablePatterns = [
+      /association configuration limits are exceeded/i,
+      /more than \d+ objects merged into it/i,
+    ];
+
+    if (nonRetryablePatterns.some((pattern) => pattern.test(errorMessage))) {
+      return false;
+    }
+
+    if (status === 429 || (status && status >= 500)) {
+      return true;
+    }
+
+    return ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(
+      errorCode || '',
+    );
+  }
+
   constructor(
     private readonly hubspotService: HubspotService,
     private readonly contactService: ContactService,
@@ -62,7 +85,7 @@ export class QueueService {
     // Buscar contactos con el mismo RUT (con reintentos para indexación)
     // Busca tanto por rut_formateado como por rut original
     let contacts = { results: [] as any[] };
-    let retries = 10;
+    let retries = 2;
 
     while (retries > 0) {
       const searchResult = await this.contactService.searchContactsByRut(
@@ -79,18 +102,19 @@ export class QueueService {
         return RutFormatter.formatRut(contactRut) === rutNormalizado;
       });
 
-      // Si encuentra más de 1 contacto, hay duplicados
-      if (contactsWithSameRut.length > 1) {
+      // Si encuentra más de 1 contacto, hay duplicados (exit loop)
+      // Si encuentra solo 1, no hay duplicados (exit loop sin reintentos)
+      if (contactsWithSameRut.length >= 1) {
         contacts.results = contactsWithSameRut;
         this.logger.log(
-          `✅ Búsqueda exitosa en intento ${11 - retries}: encontrados ${contactsWithSameRut.length} contacto(s) con RUT "${rutNormalizado}"`,
+          `✅ Búsqueda en intento ${3 - retries}: encontrados ${contactsWithSameRut.length} contacto(s) con RUT "${rutNormalizado}"`,
         );
         break;
       }
 
       if (retries > 1) {
         this.logger.debug(
-          `⏳ Reintentando búsqueda de contactos con RUT "${rutNormalizado}" (encontrados: ${contactsWithSameRut.length}, intentos restantes: ${retries - 1})...`,
+          `⏳ Reintentando búsqueda de contactos con RUT "${rutNormalizado}" (encontrados: 0, intentos restantes: ${retries - 1})...`,
         );
         await new Promise((resolve) => setTimeout(resolve, 8000));
       }
@@ -123,6 +147,8 @@ export class QueueService {
 
     let successCount = 0;
     let failCount = 0;
+    let retryableFailCount = 0;
+    let lastRetryableError = '';
 
     for (const contactToMerge of contactsToMerge) {
       try {
@@ -136,6 +162,8 @@ export class QueueService {
         );
       } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
+        const status = error.response?.status;
+        const errorCode = error.code as string | undefined;
         const forwardRefMatch = /forward reference to (\d+)/i.exec(
           errorMessage,
         );
@@ -161,6 +189,16 @@ export class QueueService {
               failCount++;
               const retryMessage =
                 retryError.response?.data?.message || retryError.message;
+              if (
+                this.isRetryableMergeError(
+                  retryMessage,
+                  retryError.response?.status,
+                  retryError.code,
+                )
+              ) {
+                retryableFailCount++;
+                lastRetryableError = retryMessage;
+              }
               this.logger.warn(
                 `   ⚠️ Contacto ${contactToMerge.id} no pudo ser unificado tras reintento: ${retryMessage}`,
               );
@@ -170,8 +208,12 @@ export class QueueService {
         }
 
         failCount++;
+        if (this.isRetryableMergeError(errorMessage, status, errorCode)) {
+          retryableFailCount++;
+          lastRetryableError = errorMessage;
+        }
         // Continuar con el siguiente contacto aunque falle uno
-        if (error.response?.status === 400) {
+        if (status === 400) {
           this.logger.warn(
             `   ⚠️ Contacto ${contactToMerge.id} no pudo ser unificado: ${errorMessage}`,
           );
@@ -186,5 +228,11 @@ export class QueueService {
     this.logger.log(
       `✅ Unificación completada para RUT "${rutNormalizado}". Contacto principal: ${primaryContactId}. Exitosos: ${successCount}, Fallidos: ${failCount}`,
     );
+
+    if (retryableFailCount > 0) {
+      throw new Error(
+        `Retryable merge errors for contact ${contactId}: ${lastRetryableError}`,
+      );
+    }
   }
 }
