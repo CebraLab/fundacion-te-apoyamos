@@ -82,7 +82,7 @@ export class CompanyRutService {
     while (retries > 0) {
       const searchResult = await this.companyService.searchCompaniesByRutAll(
         rutNormalizado,
-        ['rut_entidad', 'rut_entidad_formateado', 'createdate'],
+        ['rut_entidad', 'rut_entidad_formateado', 'createdate', 'hs_is_merged'],
       );
 
       const foundCompanies = searchResult?.results || [];
@@ -92,8 +92,9 @@ export class CompanyRutService {
         );
       }
 
-      // Filtrar por RUT normalizado (puede haber falsos positivos con CONTAINS)
+      // Filtrar por RUT normalizado y excluir empresas ya absorbidas por otro merge
       const companiesWithSameRut = foundCompanies.filter((c) => {
+        if (c.properties?.hs_is_merged === 'true') return false;
         const companyRut = c.properties?.rut_entidad;
         if (!companyRut) return false;
         return RutFormatter.formatRut(companyRut) === rutNormalizado;
@@ -173,6 +174,21 @@ export class CompanyRutService {
         if (forwardRefMatch?.[1]) {
           const canonicalId = forwardRefMatch[1];
           if (canonicalId !== primaryCompanyId) {
+            // Verificar que el canonical tenga el mismo RUT para evitar fusiones cruzadas
+            const canonicalCompany = await this.companyService.getById(
+              canonicalId,
+              ['rut_entidad'],
+            );
+            const canonicalRut =
+              canonicalCompany?.properties?.rut_entidad ?? '';
+            const canonicalRutNorm = RutFormatter.formatRut(canonicalRut);
+            if (canonicalRutNorm !== rutNormalizado) {
+              failCount++;
+              this.logger.warn(
+                `   ⛔ Forward reference hacia empresa ${canonicalId} con RUT "${canonicalRut}" DISTINTO al RUT procesado "${rutNormalizado}". Saltando merge para evitar fusión incorrecta.`,
+              );
+              continue;
+            }
             this.logger.warn(
               `   ⚠️ Empresa principal ${primaryCompanyId} no es canonical. Reintentando con canonical ${canonicalId}...`,
             );

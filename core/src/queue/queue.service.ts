@@ -90,13 +90,14 @@ export class QueueService {
     while (retries > 0) {
       const searchResult = await this.contactService.searchContactsByRut(
         rutNormalizado,
-        ['rut', 'rut_formateado', 'createdate'],
+        ['rut', 'rut_formateado', 'createdate', 'hs_is_merged'],
       );
 
       const foundContacts = searchResult?.results || [];
 
-      // Filtrar por RUT normalizado (puede haber falsos positivos con CONTAINS)
+      // Filtrar por RUT normalizado y excluir contactos ya absorbidos por otro merge
       const contactsWithSameRut = foundContacts.filter((c) => {
+        if (c.properties?.hs_is_merged === 'true') return false;
         const contactRut = c.properties?.rut;
         if (!contactRut) return false;
         return RutFormatter.formatRut(contactRut) === rutNormalizado;
@@ -171,6 +172,20 @@ export class QueueService {
         if (forwardRefMatch?.[1]) {
           const canonicalId = forwardRefMatch[1];
           if (canonicalId !== primaryContactId) {
+            // Verificar que el canonical tenga el mismo RUT para evitar fusiones cruzadas
+            const canonicalContact = await this.contactService.getById(
+              canonicalId,
+              ['rut'],
+            );
+            const canonicalRut = canonicalContact?.properties?.rut ?? '';
+            const canonicalRutNorm = RutFormatter.formatRut(canonicalRut);
+            if (canonicalRutNorm !== rutNormalizado) {
+              failCount++;
+              this.logger.warn(
+                `   ⛔ Forward reference hacia contacto ${canonicalId} con RUT "${canonicalRut}" DISTINTO al RUT procesado "${rutNormalizado}". Saltando merge para evitar fusión incorrecta.`,
+              );
+              continue;
+            }
             this.logger.warn(
               `   ⚠️ Contacto principal ${primaryContactId} no es canonical. Reintentando con canonical ${canonicalId}...`,
             );
