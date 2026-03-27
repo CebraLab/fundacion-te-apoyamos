@@ -20,6 +20,6 @@ ENV NODE_ENV=production
 ARG SSR_PORT=9010
 ENV PORT=${SSR_PORT}
 COPY --from=frontend-ssr-builder /app/dist/ssr ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force
 EXPOSE ${PORT}
 CMD ["node", "index.js"]
