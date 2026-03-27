@@ -35,28 +35,6 @@ services:
       - app_network
     restart: unless-stopped
 
-  queue_app_ssr:
-    build:
-      context: ./queue/client
-      dockerfile: Dockerfile
-      target: frontend-ssr-runtime
-    container_name: rmq_app_queue_ssr
-    environment:
-      PORT: 9010
-      NODE_ENV: production
-      PROD: true
-      API_BASE_URL: http://rmq_app_queue:3000
-    expose:
-      - 9010
-    ports:
-      - 9010:9010
-    depends_on:
-      queue_app:
-        condition: service_started
-    networks:
-      - app_network
-    restart: unless-stopped
-
   mysql:
     image: mysql:5.7
     container_name: ${PROJECT_NAME}_mysql # nombre de referencia del servicio
