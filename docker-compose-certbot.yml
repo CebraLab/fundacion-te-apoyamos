@@ -1,0 +1,30 @@
+# Let's Encrypt con Certbot (webroot). Rutas y dominio se definen en `environment`
+# abajo; los certificados en el host quedan en CERTBOT_LETSENCRYPT_DIR y el hook
+# copia a NGINX_SSL_DIR para nginx del sistema.
+#
+# Requisitos en el host:
+#   - Crear directorios: sudo mkdir -p /var/www/certbot /etc/nginx/ssl
+#   - Nginx debe servir /.well-known/acme-challenge/ (ver nginx/queue_app)
+#
+# Primera emisión (tras tener nginx en :80 con ACME):
+#   ./scripts/certbot-issue-webroot.sh
+#
+# Renovación + copia + reload:
+#   ./scripts/certbot-renew.sh
+#
+# Cron sugerido (root): 0 3,15 * * * /ruta/al/repo/scripts/certbot-renew.sh
+
+services:
+  certbot:
+    image: certbot/certbot:latest
+    environment:
+      DOMAIN: inths.fundacionteapoyamos.cl
+      EMAIL: admin@fundacionteapoyamos.cl
+      CERTBOT_LETSENCRYPT_DIR: /etc/letsencrypt
+      CERTBOT_WEBROOT: /var/www/certbot
+      NGINX_SSL_DIR: /etc/nginx/ssl
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+      - /etc/nginx/ssl:/etc/nginx/ssl
+      - ./scripts/certbot-deploy-hook.sh:/certbot-deploy-hook.sh:ro
