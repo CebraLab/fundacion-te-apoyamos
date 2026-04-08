@@ -7,13 +7,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+COMPOSE_FILE="$REPO_ROOT/docker-compose-certbot.yml"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.certbot}"
-if [ ! -f "$ENV_FILE" ]; then
-  echo "Falta $ENV_FILE (copia desde .env.certbot.example)" >&2
-  exit 1
-fi
 
-COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose-certbot.yml")
+if [ -f "$ENV_FILE" ]; then
+  COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+else
+  COMPOSE=(docker compose -f "$COMPOSE_FILE")
+fi
 
 "${COMPOSE[@]}" run --rm certbot renew \
   --deploy-hook "sh /certbot-deploy-hook.sh"

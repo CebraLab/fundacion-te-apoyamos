@@ -1,15 +1,15 @@
-# Let's Encrypt con Certbot (webroot). Rutas y dominio se definen en `environment`
-# abajo; los certificados en el host quedan en CERTBOT_LETSENCRYPT_DIR y el hook
-# copia a NGINX_SSL_DIR para nginx del sistema.
+# Let's Encrypt con Certbot (webroot). Al hacer `docker compose up -d`, el
+# entrypoint emite el certificado la primera vez (si no existe en
+# /etc/letsencrypt/live/$DOMAIN) y copia fullchain/privkey a /etc/nginx/ssl/.
 #
-# Requisitos en el host:
-#   - Crear directorios: sudo mkdir -p /var/www/certbot /etc/nginx/ssl
-#   - Nginx debe servir /.well-known/acme-challenge/ (ver nginx/queue_app)
+# Requisitos en el host ANTES de levantar este servicio:
+#   - DNS de DOMAIN apunta a este servidor
+#   - sudo mkdir -p /var/www/certbot /etc/nginx/ssl
+#   - Nginx escuchando :80 con location /.well-known/acme-challenge/ (nginx/queue_app)
+#   - Si nginx usa HTTPS antes de tener LE: cert temporal en /etc/nginx/ssl
+#     (scripts/bootstrap-self-signed-nginx-ssl.sh)
 #
-# Primera emisión (tras tener nginx en :80 con ACME):
-#   ./scripts/certbot-issue-webroot.sh
-#
-# Renovación + copia + reload:
+# Renovación periódica (no corre sola en el contenedor dormido):
 #   ./scripts/certbot-renew.sh
 #
 # Cron sugerido (root): 0 3,15 * * * /ruta/al/repo/scripts/certbot-renew.sh
@@ -17,6 +17,7 @@
 services:
   certbot:
     image: certbot/certbot:latest
+    entrypoint: ["/bin/sh", "/certbot-entrypoint.sh"]
     environment:
       DOMAIN: inths.fundacionteapoyamos.cl
       EMAIL: admin@fundacionteapoyamos.cl
@@ -27,4 +28,6 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt
       - /var/www/certbot:/var/www/certbot
       - /etc/nginx/ssl:/etc/nginx/ssl
+      - ./scripts/certbot-entrypoint.sh:/certbot-entrypoint.sh:ro
       - ./scripts/certbot-deploy-hook.sh:/certbot-deploy-hook.sh:ro
+    restart: unless-stopped

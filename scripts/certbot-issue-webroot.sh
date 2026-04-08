@@ -1,37 +1,46 @@
 #!/usr/bin/env bash
-# Primera emisión del certificado (modo webroot). Nginx debe estar en marcha
-# escuchando :80 con location /.well-known/acme-challenge/ (ver nginx/queue_app).
+# Emisión manual (modo webroot). Si usas `docker compose up` del certbot, el
+# entrypoint ya emite en el primer arranque; este script es redundante salvo
+# que quieras forzar certonly otra vez.
 #
 # Uso: ./scripts/certbot-issue-webroot.sh
 
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+COMPOSE_FILE="$REPO_ROOT/docker-compose-certbot.yml"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.certbot}"
-if [ ! -f "$ENV_FILE" ]; then
-  echo "Falta $ENV_FILE (copia desde .env.certbot.example)" >&2
-  exit 1
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  set +a
 fi
 
-set -a
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-set +a
+DOMAIN="${DOMAIN:-inths.fundacionteapoyamos.cl}"
+EMAIL="${EMAIL:-admin@fundacionteapoyamos.cl}"
 
 if [ -z "${DOMAIN:-}" ] || [ -z "${EMAIL:-}" ]; then
-  echo "Define DOMAIN y EMAIL en $ENV_FILE" >&2
+  echo "Define DOMAIN y EMAIL en $ENV_FILE o exporta las variables." >&2
   exit 1
 fi
 
-cd "$REPO_ROOT"
-docker compose --env-file "$ENV_FILE" -f docker-compose-certbot.yml run --rm certbot \
+if [ -f "$ENV_FILE" ]; then
+  COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+else
+  COMPOSE=(docker compose -f "$COMPOSE_FILE")
+fi
+
+"${COMPOSE[@]}" run --rm certbot \
   certonly --webroot -w /var/www/certbot \
   -d "$DOMAIN" \
   --email "$EMAIL" \
   --agree-tos \
   --non-interactive
 
-# Copia inicial al directorio que usa nginx (entrypoint de la imagen es "certbot")
-docker compose --env-file "$ENV_FILE" -f docker-compose-certbot.yml run --rm \
+"${COMPOSE[@]}" run --rm \
   --entrypoint /bin/sh certbot \
   -c "cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/nginx/ssl/fullchain.pem && cp /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/nginx/ssl/privkey.pem && chmod 644 /etc/nginx/ssl/fullchain.pem && chmod 600 /etc/nginx/ssl/privkey.pem"
 
@@ -41,4 +50,4 @@ elif command -v nginx >/dev/null 2>&1; then
   sudo nginx -s reload
 fi
 
-echo "Certificado emitido y copiado a NGINX_SSL_DIR. Recarga nginx si aún no se hizo."
+echo "Certificado emitido y copiado a /etc/nginx/ssl/. Recarga nginx si aún no se hizo."
