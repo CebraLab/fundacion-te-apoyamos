@@ -7,7 +7,8 @@ server {
     listen 80;
     server_name inths.fundacionteapoyamos.cl;
 
-    location /.well-known/acme-challenge/ {
+    # ^~ evita que otras locations (regex, proxy) roben la petición
+    location ^~ /.well-known/acme-challenge/ {
         root /var/www/certbot;
         default_type "text/plain";
         allow all;
@@ -27,6 +28,14 @@ server {
     ssl_certificate_key /etc/nginx/ssl/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
+
+    # Si Let's Encrypt sigue la redirección 301 HTTP→HTTPS, el desafío debe
+    # servirse aquí desde el mismo webroot (no desde el proxy al SSR).
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+        allow all;
+    }
 
     # -------------------------
     # Frontend
