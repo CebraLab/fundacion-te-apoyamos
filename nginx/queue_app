@@ -2,15 +2,6 @@ server {
     listen 80;
     server_name inths.fundacionteapoyamos.cl;
 
-    ssl_certificate     /etc/nginx/ssl/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-
-    location ^~ /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-        default_type "text/plain";
-    }
-
     location / {
         proxy_pass http://127.0.0.1:9010;
         proxy_http_version 1.1;
