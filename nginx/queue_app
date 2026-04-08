@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name inths.fundacionteapoyamos.cl;
+    server_name _;
 
     location / {
         proxy_pass http://127.0.0.1:9010;
