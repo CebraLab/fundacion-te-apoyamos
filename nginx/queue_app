@@ -1,6 +1,20 @@
 # FQDN inths.fundacionteapoyamos.cl (debe coincidir con el certificado Let's Encrypt).
-# Certificados: copiados a /etc/nginx/ssl/ por scripts/certbot-deploy-hook.sh (ver docker-compose-certbot.yml).
-# Webroot ACME: /var/www/certbot (debe existir en el servidor).
+#
+# --- Flujo recomendado (opción A): autofirmado → nginx → Let’s Encrypt ---
+#
+# 1) En el servidor, desde la raíz del repo:
+#      sudo ./scripts/setup-ssl-path-a.sh
+#    (crea /var/www/certbot, /etc/nginx/ssl y un fullchain.pem/privkey.pem temporal)
+#
+# 2) Enlazar o copiar este fichero a sites-enabled, luego:
+#      sudo nginx -t && sudo systemctl reload nginx
+#
+# 3) Levantar certbot (emite LE y sustituye los PEM en /etc/nginx/ssl/):
+#      docker compose -f docker-compose-certbot.yml up -d
+#
+# Alternativa sin HTTPS hasta tener LE: nginx/queue_app.phase1-http-only
+#
+# Certificados LE finales: copiados a /etc/nginx/ssl/ por el entrypoint/scripts certbot.
 
 # --- HTTP: validación ACME + redirección a HTTPS ---
 server {

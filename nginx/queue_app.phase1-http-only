@@ -1,0 +1,51 @@
+# FASE 1 — Solo HTTP (sin listen 443). Alternativa a la opción A (setup-ssl-path-a.sh).
+# Úsalo si no quieres PEM temporales ni listen 443 hasta tener Let’s Encrypt.
+#
+# Pasos:
+#   1) sudo mkdir -p /var/www/certbot
+#   2) En sites-enabled, apunta a este fichero (o copia su contenido) en lugar de queue_app
+#   3) sudo nginx -t && sudo systemctl reload nginx
+#   4) Levanta certbot (docker compose) y emite el certificado
+#   5) Copia PEM a /etc/nginx/ssl/ (lo hace el entrypoint/scripts)
+#   6) Sustituye esta config por queue_app (HTTP+HTTPS con redirect) y reload nginx
+#
+# En :80 no hay redirect a HTTPS para que el validador LE reciba el token en HTTP
+# (location ^~ /.well-known/ tiene prioridad sobre location /).
+
+server {
+    listen 80;
+    server_name inths.fundacionteapoyamos.cl;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+        allow all;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:9010;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /rabbit/ {
+        proxy_pass http://10.0.2.5:15672/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    error_page 502 /502.html;
+    location = /502.html {
+        root /usr/share/nginx/html;
+        internal;
+    }
+}
