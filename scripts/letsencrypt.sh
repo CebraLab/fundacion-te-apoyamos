@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
 # Let's Encrypt (webroot) + copia a /etc/nginx/ssl/ para nginx del sistema.
+#
+# Dónde están los certificados:
+#   - bootstrap: crea PEM temporales directamente en /etc/nginx/ssl/
+#   - issue/renew: Certbot guarda en /etc/letsencrypt/live/$DOMAIN/; nginx usa /etc/nginx/ssl/
+#     (issue y renew copian solos; si emitiste con certbot a mano, usa "copy").
+#
 # Uso (desde la raíz del repo, en el servidor):
 #   sudo ./scripts/letsencrypt.sh bootstrap
 #   sudo ./scripts/letsencrypt.sh issue
 #   sudo ./scripts/letsencrypt.sh renew
+#   sudo ./scripts/letsencrypt.sh copy    # solo copia LE → nginx + reload (sin certbot)
+#
+# Copia manual equivalente a "copy" (ajusta DOMAIN si cambia):
+#   sudo cp /etc/letsencrypt/live/inths.fundacionteapoyamos.cl/fullchain.pem /etc/nginx/ssl/fullchain.pem
+#   sudo cp /etc/letsencrypt/live/inths.fundacionteapoyamos.cl/privkey.pem /etc/nginx/ssl/privkey.pem
+#   sudo chmod 644 /etc/nginx/ssl/fullchain.pem && sudo chmod 600 /etc/nginx/ssl/privkey.pem
+#   sudo systemctl reload nginx
 #
 # Variables (opcional): DOMAIN, EMAIL, CERTBOT_STAGING=1 para pruebas (certs no confían en navegadores).
 
@@ -87,12 +100,28 @@ cmd_renew() {
   echo "Renovación aplicada (si hubo certificados renovados)."
 }
 
+cmd_copy() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "Ejecutar: sudo $0 copy" >&2
+    exit 1
+  fi
+  if [ ! -f "$LIVE/fullchain.pem" ] || [ ! -f "$LIVE/privkey.pem" ]; then
+    echo "No hay certificados en $LIVE (ejecuta issue primero o revisa DOMAIN)." >&2
+    exit 1
+  fi
+  mkdir -p "$SSL_DIR"
+  copy_le_to_nginx
+  reload_nginx
+  echo "Copiado $LIVE → $SSL_DIR y nginx recargado."
+}
+
 case "${1:-}" in
   bootstrap) cmd_bootstrap ;;
   issue)     cmd_issue ;;
   renew)     cmd_renew ;;
+  copy)      cmd_copy ;;
   *)
-    echo "Uso: sudo $0 bootstrap|issue|renew" >&2
+    echo "Uso: sudo $0 bootstrap|issue|renew|copy" >&2
     exit 1
     ;;
 esac
